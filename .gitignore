@@ -1,4 +1,10 @@
 *.pdf 
 *.csv
 *.txt 
+*.json
+
+data/
+parsed/
+
 *.ipynb
+.ipynb_checkpoints
