@@ -25,7 +25,7 @@ election_2024.click()
 wait_for_page_to_load(5)
 
 # download all PDF files
-pdfs = driver.find_elements(By.CLASS_NAME, "fa-file-pdf") # find all PDFs
+pdfs = driver.find_elements(By.CLASS_NAME, "fa-file-excel") # find all PDFs
 actions = ActionChains(driver)
 for p in pdfs:
     actions.move_to_element(p).click().perform() # scroll to element before clicking, will crash otherwise
