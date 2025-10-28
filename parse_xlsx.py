@@ -6,6 +6,7 @@ Pass input as .xlsx file - ECI provides .xls files, must be converted to .xlsx f
 from openpyxl import load_workbook
 import json
 from enum import Enum
+import string
 
 # enum to track section of the report being parsed currently
 class CurrentSection(Enum):
@@ -18,6 +19,14 @@ class CurrentSection(Enum):
     DATES = "Dates"
     RESULT = "Result"
     NONE = "None"
+
+'''
+Function to format constituency names
+'''
+def format_constituency_name(name):
+    parts = name.split('-')
+    parts = [string.capwords(part.strip()) for part in parts]
+    return '-'.join(parts).replace('&', 'and')
 
 '''
 Function to parse a sheet in the report, each sheet corresponds to one constituency.
@@ -50,7 +59,7 @@ def parse_sheet(sheet):
             current_section = CurrentSection.STATE_UT
             # state/UT and constituency data are specified in the same row, parse them
             data["State_UT"] = row[1].split('-')[0]
-            data["Constituency"] = '_'.join(row[3].split('-')[:-1]) # replace '-' in constituency name with '_'
+            data["Constituency"] = format_constituency_name('-'.join(row[3].split('-')[:-1]))
             data["Category"] = row[3].split('-')[-1] # last field specifies type of constituency
         elif "CANDIDATES" in str(row[0]):
             current_section = CurrentSection.CANDIDATES
