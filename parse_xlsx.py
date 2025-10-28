@@ -118,6 +118,11 @@ for s in wb.sheetnames:
     sheet = wb[s]
     parsed.append(parse_sheet(sheet))
 
+# extract ID of each constituency, useful to parse other reports
+ids = {}
+for c in parsed:
+    ids[c['ID']] = {'State_UT': c['State_UT'], 'Constituency': c['Constituency']}
+
 # dump the parsed data in json format
 with open(out_path, 'w') as f:
     json_string = json.dumps(parsed, indent=4)
