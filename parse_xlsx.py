@@ -1,6 +1,6 @@
 '''
-Script to parse constituency wise data summary reports (usually report no. 32).
-Pass input as .xlsx file - ECI provides .xls files, must be converted to .xlsx files using Excel to use with this script.
+Script to parse constituency wise data reports (usually report nos. 32, 33).
+Pass .xlsx files as input - ECI provides .xls files, must be converted to .xlsx files using Excel to use with this script.
 '''
 
 from openpyxl import load_workbook
@@ -8,7 +8,7 @@ import json
 from enum import Enum
 import string
 
-# enum to track section of the report being parsed currently
+# enum to track section of the summary report being parsed currently
 class CurrentSection(Enum):
     STATE_UT = "State/UT"
     CANDIDATES = "Candidates"
@@ -29,10 +29,10 @@ def format_constituency_name(name):
     return '-'.join(parts).replace('&', 'and')
 
 '''
-Function to parse a sheet in the report, each sheet corresponds to one constituency.
+Function to parse a sheet in the summary report, each sheet corresponds to one constituency.
 In the first half of the for loop, check and define the section being processed currently. In the second half, parse the rows according to the current section as assigned in the first half (except for single-row-sections which are parsed in the first half).
 '''
-def parse_sheet(sheet):
+def parse_summary_sheet(sheet):
     data = {
         "ID": sheet.title,
         "Constituency": None,
@@ -117,20 +117,86 @@ def parse_sheet(sheet):
 
     return data
 
-file_path = '/home/gmangipu/uni/courses/cs699/project/scripts/data/2024/to_parse/32-Constituency-Data-Summery-Report.xlsx'
+'''
+Function to parse the detailed result report which contains candidate-wise data for each constituency.
+Each row corresponds to one candidate.
+'''
+def parse_detailed_sheet(sheet, ids):
+    candidates = dict()
+    rows = list(sheet.iter_rows(values_only=True))
+    l1_fields = list(rows[1])
+    l2_fields = list(rows[2])
+
+    # clean the headers
+    # TODO: optimize this
+    for i in range(len(l1_fields)):
+        if l1_fields[i]:
+            l1_fields[i] = l1_fields[i].replace('\n', ' ')
+    for i in range(len(l2_fields)):
+        if l2_fields[i]:
+            l2_fields[i] = l2_fields[i].replace('\n', ' ')
+
+    # manually copy over some l1 fields wherever needed
+    # TODO: find a way to automate this
+    l1_fields[11] = l1_fields[10]
+    l1_fields[12] = l1_fields[10]
+    l1_fields[14] = l1_fields[13]
+
+    for row in rows[3:]:
+        # skip empty and irrelevant rows
+        if not row[2]: # check arbitrary field, this is non-empty for rows containing data
+            continue
+
+        state = row[0]
+        constituency = format_constituency_name(row[1])
+        constituency_id = 'NA'
+        for key in ids.keys():
+            if ids[key]['State_UT'] == state and ids[key]['Constituency'] == constituency:
+                constituency_id = key
+                break
+        if constituency_id == 'NA':
+            print('Not found', constituency, state)
+
+        candidate = {}
+        for field in range(3, len(row)):
+            if row[field]:
+                if l1_fields[field]:
+                    try:
+                        candidate[l1_fields[field]][l2_fields[field]] = row[field]
+                    except:
+                        candidate[l1_fields[field]] = {l2_fields[field]: row[field]}
+                else:
+                    candidate[l2_fields[field]] = row[field]
+        try:
+            candidates[constituency_id].append(candidate)
+        except:
+            candidates[constituency_id] = [candidate]
+    return candidates
+
+
+summary_file_path = '/home/gmangipu/uni/courses/cs699/project/scripts/data/2024/to_parse/32-Constituency-Data-Summery-Report.xlsx'
+detailed_file_path = '/home/gmangipu/uni/courses/cs699/project/scripts/data/2024/to_parse/33-Constituency-Wise-Detailed-Result.xlsx'
 out_path = 'parsed/2024.json'
 
-# load workbook and parse the sheets
-wb = load_workbook(file_path)
+# get constituency-wise summary data
+wb = load_workbook(summary_file_path)
 parsed = []
 for s in wb.sheetnames:
     sheet = wb[s]
-    parsed.append(parse_sheet(sheet))
+    parsed.append(parse_summary_sheet(sheet))
 
 # extract ID of each constituency, useful to parse other reports
 ids = {}
 for c in parsed:
     ids[c['ID']] = {'State_UT': c['State_UT'], 'Constituency': c['Constituency']}
+
+# get constituency-wise candidate data
+wb = load_workbook(detailed_file_path)
+candidates = parse_detailed_sheet(wb.active, ids)
+
+# merge candidate data into parsed summary data
+for constituency in parsed:
+    constituency['Candidates'] = candidates[constituency['ID']]
 
 # dump the parsed data in json format
 with open(out_path, 'w') as f:
