@@ -1,7 +1,8 @@
 """
 A robust web scraper to download statistical reports from the ECI website.
+Handles pagination for legacy years (pre-2024).
 
-Setup Instructions 
+Setup Instructions
 1. Install the browser and driver:
    sudo apt update
    sudo apt install chromium-browser chromium-chromedriver
@@ -17,7 +18,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 def wait_for_downloads_to_complete(folder_path, timeout=300):
     """
@@ -35,7 +36,7 @@ def wait_for_downloads_to_complete(folder_path, timeout=300):
     print(f"  -> WARNING: Download wait timed out after {timeout} seconds. Some files may be incomplete.")
 
 # --- Configuration ---
-YEARS_TO_DOWNLOAD = ["2024","2019","2014","2009"]
+YEARS_TO_DOWNLOAD = ["2024", "2019", "2014", "2009"]
 MAIN_DOWNLOAD_FOLDER = os.path.join(os.getcwd(), "downloads")
 
 # --- Main Script ---
@@ -53,7 +54,7 @@ for year in YEARS_TO_DOWNLOAD:
     # --- Configure Chrome Options ---
     options = Options()
     # Run Chrome in headless mode (no UI window) for server/background execution
-    options.add_argument("--headless")
+    # options.add_argument("--headless")
     # Set a standard window size to prevent mobile layouts in headless mode
     options.add_argument("--window-size=1920,1080")
     # Set a common User-Agent to avoid being identified as a bot
@@ -61,10 +62,10 @@ for year in YEARS_TO_DOWNLOAD:
     
     # Set the custom download folder for this session
     options.add_experimental_option("prefs", {
-      "download.default_directory": download_folder,
-      "download.prompt_for_download": False,
-      "download.directory_upgrade": True,
-      "safebrowsing.enabled": True
+       "download.default_directory": download_folder,
+       "download.prompt_for_download": False,
+       "download.directory_upgrade": True,
+       "safebrowsing.enabled": True
     })
     
     # Initialize the Selenium WebDriver
@@ -110,17 +111,82 @@ for year in YEARS_TO_DOWNLOAD:
             driver.switch_to.window(driver.window_handles[1]) # Switch to the newly opened tab
             print(f"  -> Switched to new tab for {year}'s data.")
             
-            # Get all the individual file page URLs first to avoid stale element issues
-            urls = [el.get_attribute('href') for el in wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, "h4.ipsDataItem_title a")))]
-            print(f"  -> Found {len(urls)} file pages to process.")
+            # --- Pagination Logic ---
+            urls_to_process = []
+            page_num = 1
+            current_page_links = [] # To check for staleness
 
-            for i, url in enumerate(urls):
-                print(f"    - Processing file {i+1}/{len(urls)}...")
+            while True:
+                print(f"  -> Scraping file links from page {page_num}...")
+                try:
+                    # Wait for the file links on the current page to be present
+                    page_links = wait.until(
+                        EC.presence_of_all_elements_located((By.CSS_SELECTOR, "h4.ipsDataItem_title a"))
+                    )
+                    # Get href attribute, but only if it's not None
+                    new_urls = [el.get_attribute('href') for el in page_links if el.get_attribute('href')]
+                    
+                    if not new_urls:
+                         print("     -> No links found on this page, but checking for 'next'...")
+                    
+                    print(f"     -> Found {len(new_urls)} links on this page.")
+                    urls_to_process.extend(new_urls)
+                    
+                    # Store the first link element for the staleness check
+                    if page_links:
+                        current_page_links = page_links
+                
+                except TimeoutException:
+                    print("     -> No file links found on this page.")
+                    # This is fine, might be last page. We'll check for 'next' button.
+                    pass 
+
+                # Check for a "Next" page button
+                try:
+                    # Find the 'Next' button's link.
+                    # This selector finds the <li> with class 'ipsPagination_next'
+                    # that *does not* have the class 'ipsPagination_inactive'.
+                    next_page_button = driver.find_element(By.CSS_SELECTOR, "li.ipsPagination_next:not(.ipsPagination_inactive) a")
+                    
+                    print("  -> Found 'Next Page' button. Clicking...")
+                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", next_page_button)
+                    time.sleep(0.5) # Brief pause for scroll
+                    driver.execute_script("arguments[0].click();", next_page_button) # Use JS click for reliability
+                    page_num += 1
+                    
+                    # Wait for the page to transition by waiting for the old links to go stale
+                    if current_page_links:
+                        wait.until(EC.staleness_of(current_page_links[0]))
+                    else:
+                        time.sleep(2) # Fallback wait if no links were on the page
+
+                except NoSuchElementException:
+                    # If find_element fails, it means no active 'next' button was found
+                    print("  -> No more 'Next Page' buttons found. All pages scraped.")
+                    break # Exit the while loop
+                except Exception as e:
+                    print(f"  -> Error during pagination: {e}. Stopping page search.")
+                    break # Exit on other errors
+            # --- End of Pagination Logic ---
+
+            print(f"\n  -> Total files found across all pages: {len(urls_to_process)}.")
+
+            for i, url in enumerate(urls_to_process):
+                print(f"    - Processing file {i+1}/{len(urls_to_process)}...")
+                
+                if not url:
+                    print("      -> Skipping empty or invalid URL.")
+                    continue
+                
                 driver.get(url)
                 
                 # Click through the two download confirmation prompts
-                wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "a.ipsButton_important"))).click()
-                wait.until(EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), 'Agree & Download')]"))).click()
+                try:
+                    wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "a.ipsButton_important"))).click()
+                    wait.until(EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), 'Agree & Download')]"))).click()
+                except TimeoutException:
+                    print(f"      -> ERROR: Could not find 'Agree' buttons for URL: {url}. Skipping file.")
+                    continue # Skip to the next URL
                 
                 # Special handling for 2009 (PDFs) vs. other legacy years (XLS)
                 try:
@@ -134,7 +200,7 @@ for year in YEARS_TO_DOWNLOAD:
                     wait.until(EC.element_to_be_clickable((By.XPATH, download_xpath))).click()
                     print(f"      -> Clicked the {file_type} download button.")
                 except TimeoutException:
-                    print(f"      -> Could not find a downloadable file for this item.")
+                    print(f"      -> ERROR: Could not find the final {file_type} download link for URL: {url}.")
                 
                 time.sleep(2) # Politeness cooldown
 
@@ -149,4 +215,4 @@ for year in YEARS_TO_DOWNLOAD:
         print("  -> Closing browser session.")
         driver.quit()
 
-print(f"\n All specified years have been processed!")
+print(f"\nAll specified years have been processed!")
