@@ -158,7 +158,7 @@ def parse_detailed_sheet(sheet, ids):
             print('Not found', constituency, state)
 
         candidate = {}
-        for field in range(3, len(row)):
+        for field in range(2, len(row)):
             if row[field]:
                 if l1_fields[field]:
                     try:
