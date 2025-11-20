@@ -1,25 +1,35 @@
 # Election Data Scripts
 
-This repository contains a collection of Python scripts designed for web-scraping, PDF parsing, and post-processing election data. The toolchain is used to pull election data (typically from PDFs or Excel files), parse the content, normalize entries, and merge them into a standardized format.
+This repository contains a collection of Python scripts designed for web-scraping, PDF parsing, and post-processing election data. The toolchain is used to pull election data, parse the content, normalize entries, and merge them into a standardized format.
 
 ## Repository Structure
 
-### Main Pipeline (Root Directory)
+### Main Pipeline
 
 These scripts constitute the core workflow for acquiring and processing data.
 
 * **`scrape_xls.py`**: Scrapes election data files (such as Excel or PDF links) from source websites.
-* **`parse_data.py`**: The main parsing logic used to extract structured data from raw files (e.g., parsing PDFs and XLS into text/tables).
+* **`parse_data.py`**: The main parsing logic used to extract structured data from raw files.
+* **`parse_1971_2004.PY`**: Parsers for handling historical data formats from 1971 to 2004.
 * **`convert_to_xlsx.py`**: Converts parsed raw data into standardized Excel (`.xlsx`) spreadsheets.
 * **`merge_data.py`**: Merges multiple processed datasets into a single master dataset for analysis.
+
+### Historical Parsers (`Old_Parsers/` Directory)
+
+Dedicated scripts for parsing older election data.
+
+* **`parse_1996.py`**
+* **`parse_1998.py`**
+* **`parse_1999.py`**
+* **`parse_2004.py`**
 
 ### Utilities (`misc/` Directory)
 
 Helper scripts for data cleaning, validation, and normalization.
 
 * **Data Cleaning:**
-    * `party_normalizer.py`: Standardizes political party names to ensure consistency across different years.
-    * `summary_trimmer.py`: Removes unnecessary pages (e.g., cover pages) from PDFs.
+    * `party_normalizer.py`: Standardizes political party names to ensure consistency across different data sources.
+    * `summary_trimmer.py`: Removes unnecessary pages (e.g., cover pages) from PDFs, specifically handling pre-2009 formats.
     * `update_names.py` / `join.py`: Scripts to clean and join GeoJSON or JSON data.
     * `update_xlsx.py`: Edits and standardizes existing Excel sheets.
 
@@ -31,7 +41,7 @@ Helper scripts for data cleaning, validation, and normalization.
 
 ### Prerequisites
 
-You need to install dependencies using:
+You will need the following libraries for scraping and data processing:
 
 ```bash
 pip install pandas openpyxl requests pdfplumber selenium
